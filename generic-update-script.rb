@@ -9,6 +9,7 @@ require "dependabot/pull_request_creator"
 require "dependabot/omnibus"
 require "gitlab"
 require "json"
+require "httparty"
 
 credentials = [
   {
@@ -102,13 +103,40 @@ elsif ENV["AZURE_ACCESS_TOKEN"]
     directory: directory,
     branch: branch,
   )
+elsif ENV["BITBUCKET_KEY"] && ENV["BITBUCKET_SECRET"]
+  auth = {:username => ENV["BITBUCKET_KEY"], :password => ENV["BITBUCKET_SECRET"]}
+  response = HTTParty.post(
+     "https://bitbucket.org/site/oauth2/access_token", {
+     :basic_auth => auth,
+     :body => "grant_type=client_credentials"
+  })
+
+  access_token = JSON.parse(response.body)["access_token"]
+
+  bitbucket_hostname = ENV["BITBUCKET_HOSTNAME"] || "bitbucket.org"
+
+  credentials << {
+    "type" => "git_source",
+    "host" => bitbucket_hostname,
+    "username" => nil,
+    "token" => access_token
+  }
+
+  source = Dependabot::Source.new(
+    provider: "bitbucket",
+    hostname: bitbucket_hostname,
+    api_endpoint: ENV["BITBUCKET_API_URL"] || "https://api.bitbucket.org/2.0/",
+    repo: repo_name,
+    directory: directory,
+    branch: branch,
+  )
 elsif ENV["BITBUCKET_ACCESS_TOKEN"]
   bitbucket_hostname = ENV["BITBUCKET_HOSTNAME"] || "bitbucket.org"
 
   credentials << {
     "type" => "git_source",
     "host" => bitbucket_hostname,
-    "username" => "x-token-auth",
+    "username" => nil,
     "token" => ENV["BITBUCKET_ACCESS_TOKEN"]
   }
 
@@ -227,7 +255,7 @@ dependencies.select(&:top_level?).each do |dep|
     files: updated_files,
     credentials: credentials,
     assignees: assignees,
-    author_details: { name: "Dependabot", email: "no-reply@github.com" },
+    author_details: { name: "Dependabot", email: "devteam+dependabot@hatchd.com.au" },
     label_language: true,
   )
   pull_request = pr_creator.create
